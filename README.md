@@ -1,1 +1,1 @@
-# Smart Watering System based Time using Arduino and RTC
+# Smart Irrigation System based Time using Arduino and RTC
