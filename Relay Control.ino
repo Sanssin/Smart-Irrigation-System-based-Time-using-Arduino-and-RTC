@@ -99,8 +99,6 @@ void setup() {
   loadFromEEPROM();
 }
 
-
-
 // Fungsi menampilkan menu
 void displayMenu() {
   lcd.clear();
@@ -197,7 +195,7 @@ void handleMenuNavigation(int button) {
       delay(2000); // Tampilkan selama 2 detik
       currentMenu = 0; // Kembali ke menu awal
     }
-  } else {
+    }else {
     if (button == btnUP) {
       if (currentMenu == 1) {
         if (relayTime < 60) relayTime++;
@@ -232,7 +230,6 @@ void handleMenuNavigation(int button) {
     }
   }
 }
-
 
 void handleRelayLogic() {
   if (currentMenu == 0) {
@@ -290,7 +287,7 @@ void handleRelayLogic() {
 void deactivateAllRelays() {
   for (int i = 0; i < 5; i++) {
     activateRelay(i, false, false); // Matikan setiap relay
-  }
+}
   
   // Reset status relay
   currentRelayIndex = -1;  // Tidak ada relay yang aktif
@@ -303,9 +300,6 @@ void deactivateAllRelays() {
   displayMenu();           // Perbarui tampilan ke menu awal
 }
 
-
-
-
 void activateRelay(int relayIndex, bool isActive, bool isOpening = true) {
   if (relayIndex < 0 || relayIndex >= 5) return;
   
@@ -315,10 +309,6 @@ void activateRelay(int relayIndex, bool isActive, bool isOpening = true) {
   // Aktifkan pin dengan HIGH saat isActive true, atau LOW saat isActive false
   digitalWrite(pin, isActive ? HIGH : LOW);
 }
-
-
-
-
 
 // Fungsi utama loop
 void loop() {
