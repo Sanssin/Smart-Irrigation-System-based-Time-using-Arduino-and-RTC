@@ -1,1 +1,1 @@
-# Smart_Watering_System_based_Time_using_Arduino_and_RTC
+# Smart Watering System based Time using Arduino and RTC
