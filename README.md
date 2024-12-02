@@ -89,7 +89,7 @@ Proyek ini memungkinkan pengguna mengontrol lima relay untuk mengatur aliran air
 ---
 
 ## 📚 Lisensi
-Proyek ini dilisensikan di bawah [MIT License](LICENSE).
+Proyek ini dilisensikan di bawah [MIT License](https://github.com/Sanssin/Smart-Irrigation-System-based-Time-using-Arduino-and-RTC/blob/main/LISENCE).
 
 ---
 
