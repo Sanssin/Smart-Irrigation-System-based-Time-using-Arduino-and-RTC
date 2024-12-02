@@ -31,6 +31,9 @@ Proyek ini memungkinkan pengguna mengontrol lima relay untuk mengatur aliran air
      <img src="Images/LCD-Keypad-Shield.jpg" alt="LCD Keypad Shield" width="300" />
    </p>
 7. **Relay Modul**: Mengontrol katup air.
+   <p align="center">
+     <img src="Images/SSR.jpg" alt="Solid State Relay" width="300" />
+   </p>
 9. **Sumber Daya**: Adaptor 12V.
 
 ---
