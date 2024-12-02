@@ -19,11 +19,17 @@ Proyek ini memungkinkan pengguna mengontrol lima relay untuk mengatur aliran air
 
 ## ⚙️ Komponen Utama
 1. **Arduino Uno**: Mikrokontroler utama untuk mengontrol sistem.
-   ![Arduino Uno](Images/Arduino.jpg)
+   <p align="center">
+     <img src="Images/Arduino.jpg" alt="Arduino Uno" width="200" />
+   </p>
 3. **RTC DS3231**: Mengatur waktu penyiraman secara akurat.
-   ![RTC DS3231](Images/RTC.jpg)
+   <p align="center">
+     <img src="Images/RTC.jpg" alt="RTC DS3231" width="200" />
+   </p>
 5. **LCD Keypad Shield**: Sebagai antarmuka pengguna.
-   ![LCD Keypad Shield](Images/LCD_Keypad_Shield.jpg)
+   <p align="center">
+     <img src="Images/LCD-Keypad-Shield.jpg" alt="LCD Keypad Shield" width="200" />
+   </p>
 7. **Relay Modul**: Mengontrol katup air.
 9. **Sumber Daya**: Adaptor 12V.
 
