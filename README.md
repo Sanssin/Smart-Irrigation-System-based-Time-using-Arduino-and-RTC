@@ -102,7 +102,7 @@ Proyek ini dilisensikan di bawah [MIT License](https://github.com/Sanssin/Smart-
 ---
 
 ## 📧 Kontak
-Untuk pertanyaan lebih lanjut, silakan hubungi **[Nur Ihsanudin](mailto:nurihsanudin13@gmail.com)**.
+Untuk pertanyaan lebih lanjut, silakan hubungi **[Nur Ihsanudin](nurihsanudin13@gmail.com)**.
 
 ---
 
