@@ -1,4 +1,4 @@
-# 🌾 Smart Irrigation System for Rice Fields 🌾
+# 🌾 Smart Irrigation System based Time using Arduino and RTC🌾
 
 **Sistem otomatis untuk pengelolaan penyiraman sawah menggunakan RTC, relay, dan antarmuka LCD Keypad Shield.**
 
@@ -19,11 +19,13 @@ Proyek ini memungkinkan pengguna mengontrol lima relay untuk mengatur aliran air
 
 ## ⚙️ Komponen Utama
 1. **Arduino Uno**: Mikrokontroler utama untuk mengontrol sistem.
-2. **RTC DS3231**: Mengatur waktu penyiraman secara akurat.
-3. **LCD Keypad Shield**: Sebagai antarmuka pengguna.
-4. **Relay Modul**: Mengontrol katup air.
-5. **Pompa Air**: Untuk penyiraman sawah.
-6. **Sumber Daya**: Adaptor 12V.
+   ![Arduino Uno](Images/Arduino.jpg)
+3. **RTC DS3231**: Mengatur waktu penyiraman secara akurat.
+   ![RTC DS3231](Images/RTC.jpg)
+5. **LCD Keypad Shield**: Sebagai antarmuka pengguna.
+   ![LCD Keypad Shield](Images/LCD_Keypad_Shield.jpg)
+7. **Relay Modul**: Mengontrol katup air.
+9. **Sumber Daya**: Adaptor 12V.
 
 ---
 
