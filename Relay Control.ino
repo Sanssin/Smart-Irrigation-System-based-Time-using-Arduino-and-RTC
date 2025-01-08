@@ -13,6 +13,7 @@ const int relayPinsClose[5] = {1, 3, 12, A1, A3}; // Relay untuk menutup valve
 
 // Deklarasi fungsi
 void activateRelay(int relayIndex, bool isActive, bool isOpening = true);
+void deactivateAllRelays();
 
 // Array waktu delay khusus untuk setiap relay (dalam milidetik)
 const int relayOpenDelays[5] = {25000, 30000, 30000, 30000, 30000}; // Contoh delay per relay
@@ -21,8 +22,10 @@ const int relayOpenDelays[5] = {25000, 30000, 30000, 30000, 30000}; // Contoh de
 int currentMenu = 0;
 int relayTime = 1;  // Default 1 menit untuk relay buka
 int startRelay = 0; // Relay pembuka pertama
-int startHour = 0;  // Jam mulai
-int startMinute = 0; // Menit mulai
+int startHourMorning = 0;  // Jam mulai pagi
+int startMinuteMorning = 0; // Menit mulai pagi
+int startHourEvening = 0;  // Jam mulai sore
+int startMinuteEvening = 0; // Menit mulai sore
 unsigned long lastRelayChange = 0;
 int currentRelayIndex = -1; // Indeks relay yang sedang aktif
 bool isRelayActive = false;
@@ -65,16 +68,20 @@ int readButton() {
 void saveToEEPROM() {
   EEPROM.put(0, relayTime);
   EEPROM.put(20, startRelay);
-  EEPROM.put(24, startHour);
-  EEPROM.put(28, startMinute);
+  EEPROM.put(24, startHourMorning);
+  EEPROM.put(28, startMinuteMorning);
+  EEPROM.put(32, startHourEvening);
+  EEPROM.put(36, startMinuteEvening);
 }
 
 // Fungsi membaca data dari EEPROM
 void loadFromEEPROM() {
   EEPROM.get(0, relayTime);
   EEPROM.get(20, startRelay);
-  EEPROM.get(24, startHour);
-  EEPROM.get(28, startMinute);
+  EEPROM.get(24, startHourMorning);
+  EEPROM.get(28, startMinuteMorning);
+  EEPROM.get(32, startHourEvening);
+  EEPROM.get(36, startMinuteEvening);
 }
 
 // Inisialisasi
@@ -109,10 +116,10 @@ void displayMenu() {
     lcd.print("AKAN MENYIRAM");
     lcd.setCursor(3, 1);
     lcd.print("JAM ");
-    lcd.print(startHour);
+    lcd.print(startHourMorning);
     lcd.print(":");
-    if (startMinute < 10) lcd.print("0");
-    lcd.print(startMinute);
+    if (startMinuteMorning < 10) lcd.print("0");
+    lcd.print(startMinuteMorning);
 
     if (millis() - tempDisplayStartTime > 2000) {
       showTempDisplay = false;
@@ -154,12 +161,21 @@ void displayMenu() {
       break;
     case 3:
       lcd.setCursor(0, 0);
-      lcd.print("MULAI SIRAM:");
+      lcd.print("MULAI PAGI:");
       lcd.setCursor(1, 1);
-      lcd.print("DARI JAM ");
-      lcd.print(startHour);
+      lcd.print(startHourMorning);
       lcd.print(":");
-      lcd.print(startMinute);
+      if (startMinuteMorning < 10) lcd.print("0");
+      lcd.print(startMinuteMorning);
+      break;
+    case 4:
+      lcd.setCursor(0, 0);
+      lcd.print("MULAI SORE:");
+      lcd.setCursor(1, 1);
+      lcd.print(startHourEvening);
+      lcd.print(":");
+      if (startMinuteEvening < 10) lcd.print("0");
+      lcd.print(startMinuteEvening);
       break;
   }
 }
@@ -195,27 +211,31 @@ void handleMenuNavigation(int button) {
       delay(2000); // Tampilkan selama 2 detik
       currentMenu = 0; // Kembali ke menu awal
     }
-    }else {
+  } else {
     if (button == btnUP) {
       if (currentMenu == 1) {
         if (relayTime < 60) relayTime++;
       }
-      if (currentMenu == 3) startHour = (startHour + 1) % 24;
+      if (currentMenu == 3) startHourMorning = (startHourMorning + 1) % 24;
+      if (currentMenu == 4) startHourEvening = (startHourEvening + 1) % 24;
     }
     if (button == btnDOWN) {
       if (currentMenu == 1) relayTime = max(1, relayTime - 1);
-      if (currentMenu == 3) startHour = (startHour + 23) % 24;
+      if (currentMenu == 3) startHourMorning = (startHourMorning + 23) % 24;
+      if (currentMenu == 4) startHourEvening = (startHourEvening + 23) % 24;
     }
     if (button == btnLEFT) {
       if (currentMenu == 2) startRelay = (startRelay + 4) % 5;
-      if (currentMenu == 3) startMinute = (startMinute + 59) % 60;
+      if (currentMenu == 3) startMinuteMorning = (startMinuteMorning + 59) % 60;
+      if (currentMenu == 4) startMinuteEvening = (startMinuteEvening + 59) % 60;
     }
     if (button == btnRIGHT) {
       if (currentMenu == 2) startRelay = (startRelay + 1) % 5;
-      if (currentMenu == 3) startMinute = (startMinute + 1) % 60;
+      if (currentMenu == 3) startMinuteMorning = (startMinuteMorning + 1) % 60;
+      if (currentMenu == 4) startMinuteEvening = (startMinuteEvening + 1) % 60;
     }
     if (button == btnSELECT) {
-      if (currentMenu == 3) {
+      if (currentMenu == 4) {
         saveToEEPROM();
         lcd.clear();
         lcd.setCursor(3, 0);
@@ -225,7 +245,7 @@ void handleMenuNavigation(int button) {
         delay(2000);
         currentMenu = 0;
       } else {
-        currentMenu = (currentMenu + 1) % 4;
+        currentMenu = (currentMenu + 1) % 5;
       }
     }
   }
@@ -235,8 +255,18 @@ void handleRelayLogic() {
   if (currentMenu == 0) {
     DateTime now = rtc.now();
 
-    // Cek apakah waktu mulai telah tiba dan siklus belum selesai
-    if (!isRelayActive && now.hour() == startHour && now.minute() == startMinute && !cycleCompleted) {
+    // Cek apakah waktu mulai pagi telah tiba dan siklus belum selesai
+    if (!isRelayActive && now.hour() == startHourMorning && now.minute() == startMinuteMorning && !cycleCompleted) {
+      isRelayActive = true;
+      currentRelayIndex = startRelay; // Mulai dari relay pembuka yang ditentukan
+      isRelayOpening = true;          // Awali dengan fase buka
+      lastRelayChange = millis();
+      // Aktifkan relay buka pertama kali
+      activateRelay(currentRelayIndex, true); 
+    }
+
+    // Cek apakah waktu mulai sore telah tiba dan siklus belum selesai
+    if (!isRelayActive && now.hour() == startHourEvening && now.minute() == startMinuteEvening && !cycleCompleted) {
       isRelayActive = true;
       currentRelayIndex = startRelay; // Mulai dari relay pembuka yang ditentukan
       isRelayOpening = true;          // Awali dengan fase buka
@@ -287,7 +317,7 @@ void handleRelayLogic() {
 void deactivateAllRelays() {
   for (int i = 0; i < 5; i++) {
     activateRelay(i, false, false); // Matikan setiap relay
-}
+  }
   
   // Reset status relay
   currentRelayIndex = -1;  // Tidak ada relay yang aktif
