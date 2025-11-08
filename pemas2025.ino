@@ -3,18 +3,16 @@
 #include <LiquidCrystal.h>
 #include <EEPROM.h>
 
-//ini program terbaru 2025
-
 // Objek RTC dan LCD
 RTC_DS3231 rtc;
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
-// Pin relay (dikurangi menjadi 4)
-const int relayPinsOpen[3] = {0, 2, 11};  // Relay untuk membuka valve
-const int relayPinsClose[3] = {1, 3, 12}; // Relay untuk menutup valve
+// Pin relay (4 relay)
+const int relayPinsOpen[4] = {0, 2, 11, 13};  // Relay untuk membuka valve
+const int relayPinsClose[4] = {1, 3, 12, 10}; // Relay untuk menutup valve
 
 // Pin Sensor Hujan
-const int rainSensorPin [3] = {A1, A2, A3};
+const int rainSensorPin = A1; // Sensor hujan tunggal
 const int HEAVY_RAIN_THRESHOLD = 500; // Ambang batas nilai analog untuk hujan deras
 
 // Deklarasi fungsi
@@ -28,10 +26,10 @@ const int relayOpenDelays[4] = {25000, 30000, 30000, 30000}; // Contoh delay per
 // Variabel global
 int currentMenu = 0;
 int relayTime = 1;  // Default 1 menit untuk relay buka
-int startRelay = 0; // Relay pembuka pertama
-int startHourMorning = 0;  // Jam mulai pagi
+int startRelay = 1; // Relay pembuka pertama
+int startHourMorning = 6;  // Jam mulai pagi
 int startMinuteMorning = 0; // Menit mulai pagi
-int startHourEvening = 0;  // Jam mulai sore
+int startHourEvening = 16;  // Jam mulai sore
 int startMinuteEvening = 0; // Menit mulai sore
 unsigned long lastRelayChange = 0;
 int currentRelayIndex = -1; // Indeks relay yang sedang aktif
@@ -56,6 +54,11 @@ const unsigned long debounceDelay = 1000; // Debounce dalam milidetik
 // Variabel tampilan sementara
 unsigned long tempDisplayStartTime = 0;
 bool showTempDisplay = false;
+
+// Variabel untuk non-blocking display
+unsigned long infoDisplayStartTime = 0;
+bool showInfoDisplay = false;
+int infoDisplayType = 0; // 1=durasi, 2=credits, 3=saved
 
 int readButton() {
   int adc_key_in = analogRead(0);
@@ -97,24 +100,47 @@ void loadFromEEPROM() {
 void setup() {
   //Serial.begin(9600); // Mulai komunikasi serial
   lcd.begin(16, 2);
+
+  // 1. Inisialisasi komunikasi dengan RTC
   if (!rtc.begin()) {
     lcd.print("RTC Error!");
     while (1);
   };
 
+  // 2. LOGIKA CERDAS UNTUK MENANGANI 'lostPower'
   if (rtc.lostPower()) {
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // Jika ada laporan 'lostPower', kita periksa dulu waktunya
+    DateTime now = rtc.now();
+    
+    // 2a. Cek apakah tahunnya tidak wajar (di bawah 2025)
+    // Ini menandakan baterai RTC benar-benar mati dan waktu kacau.
+    if (now.year() < 2025) {
+      lcd.clear();
+      lcd.print("Baterai RTC Habis");
+      lcd.setCursor(0, 1);
+      lcd.print("Waktu di-reset..");
+      delay(2000);
+      // Karena waktu sudah pasti salah, kita reset ke waktu compile
+      // sebagai solusi darurat.
+      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    }
+    // 2b. Jika tahunnya wajar (else)
+    // Ini berarti hanya ada gangguan di VCC, tapi waktu tetap aman berkat baterai.
+    // Dalam kasus ini, kita TIDAK MELAKUKAN APA-APA dan biarkan program lanjut
+    // dengan waktu yang benar dari RTC.
   }
 
-  pinMode(rainSensorPin, INPUT_PULLUP); // Inisialisasi pin sensor hujan
+  // 3. Inisialisasi pin sensor hujan dan relay
+  pinMode(rainSensorPin, INPUT); 
 
   for (int i = 0; i < 4; i++) {
     pinMode(relayPinsOpen[i], OUTPUT);
     pinMode(relayPinsClose[i], OUTPUT);
-    digitalWrite(relayPinsOpen[i], HIGH); // Set relay to HIGH (inactive) for Low Level Trigger
-    digitalWrite(relayPinsClose[i], HIGH); // Set relay to HIGH (inactive) for Low Level Trigger
+    digitalWrite(relayPinsOpen[i], HIGH); 
+    digitalWrite(relayPinsClose[i], HIGH);
   }
 
+  // 4. Muat pengaturan jadwal dari EEPROM
   loadFromEEPROM();
 }
 
@@ -135,6 +161,27 @@ void displayMenu() {
 
     if (millis() - tempDisplayStartTime > 2000) {
       showTempDisplay = false;
+    }
+    return;
+  }
+
+  if (showInfoDisplay) {
+    if (infoDisplayType == 1) {
+      lcd.setCursor(0, 0);
+      lcd.print("DURASI MENYIRAM");
+      lcd.setCursor(1, 1);
+      lcd.print("SELAMA ");
+      lcd.print(relayTime);
+      lcd.print(" MENIT");
+    } else if (infoDisplayType == 2) {
+      lcd.setCursor(6, 0);
+      lcd.print("By");
+      lcd.setCursor(0, 1);
+      lcd.print("HIMA EINSTEN.COM");
+    }
+    
+    if (millis() - infoDisplayStartTime > 2000) {
+      showInfoDisplay = false;
     }
     return;
   }
@@ -195,33 +242,21 @@ void displayMenu() {
 void handleMenuNavigation(int button) {
   if (currentMenu == 0) {
     if (button == btnSELECT) {
-      currentMenu = (currentMenu + 1) % 4;
+      currentMenu = (currentMenu + 1) % 5;
     }
     if (button == btnUP) {
       showTempDisplay = true;
       tempDisplayStartTime = millis();
     }
     if (button == btnRIGHT) {
-      // Tampilkan durasi siram ketika tombol RIGHT ditekan
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("DURASI MENYIRAM");
-      lcd.setCursor(1, 1);
-      lcd.print("SELAMA ");
-      lcd.print(relayTime);
-      lcd.print(" MENIT");
-      delay(2000); // Tampilkan durasi siram selama 2 detik
-      currentMenu = 0; // Kembali ke menu awal
+      showInfoDisplay = true;
+      infoDisplayType = 1;
+      infoDisplayStartTime = millis();
     }
     if (button == btnDOWN) {
-      // Tampilkan "By hima einsten.com" selama 2 detik ketika tombol DOWN ditekan
-      lcd.clear();
-      lcd.setCursor(6, 0);
-      lcd.print("By");
-      lcd.setCursor(0, 1);
-      lcd.print("HIMA EINSTEN.COM");
-      delay(2000); // Tampilkan selama 2 detik
-      currentMenu = 0; // Kembali ke menu awal
+      showInfoDisplay = true;
+      infoDisplayType = 2;
+      infoDisplayStartTime = millis();
     }
   } else {
     if (button == btnUP) {
@@ -237,12 +272,12 @@ void handleMenuNavigation(int button) {
       if (currentMenu == 4) startHourEvening = (startHourEvening + 23) % 24;
     }
     if (button == btnLEFT) {
-      if (currentMenu == 2) startRelay = (startRelay + 3) % 3; // Disesuaikan untuk 4 relay
+      if (currentMenu == 2) startRelay = (startRelay + 3) % 4; // 4 relay
       if (currentMenu == 3) startMinuteMorning = (startMinuteMorning + 59) % 60;
       if (currentMenu == 4) startMinuteEvening = (startMinuteEvening + 59) % 60;
     }
     if (button == btnRIGHT) {
-      if (currentMenu == 2) startRelay = (startRelay + 1) % 3; // Disesuaikan untuk 4 relay
+      if (currentMenu == 2) startRelay = (startRelay + 1) % 4; // 4 relay
       if (currentMenu == 3) startMinuteMorning = (startMinuteMorning + 1) % 60;
       if (currentMenu == 4) startMinuteEvening = (startMinuteEvening + 1) % 60;
     }
@@ -275,19 +310,30 @@ void handleRelayLogic() {
   }
 
   // 2. Hentikan siklus yang sedang berjalan jika tiba-tiba hujan deras
-  if (isRelayActive && isHeavyRain()) {
-    lcd.clear();
-    lcd.print("HUJAN DERAS,");
-    lcd.setCursor(0, 1);
-    lcd.print("SIRAM DIHENTIKAN!");
+  static unsigned long rainStopDisplayTime = 0;
+  static bool rainStopDisplayActive = false;
+  
+  if (isRelayActive && isHeavyRain() && !rainStopDisplayActive) {
     deactivateAllRelays();
     if (isMorningCycle) {
-      morningCycleCompleted = true; // Tandai siklus pagi selesai untuk hari ini
+      morningCycleCompleted = true;
     } else {
-      eveningCycleCompleted = true; // Tandai siklus sore selesai untuk hari ini
+      eveningCycleCompleted = true;
     }
-    delay(5000);
-    return;
+    rainStopDisplayActive = true;
+    rainStopDisplayTime = millis();
+  }
+  
+  if (rainStopDisplayActive) {
+    if (millis() - rainStopDisplayTime < 5000) {
+      lcd.clear();
+      lcd.print("HUJAN DERAS,");
+      lcd.setCursor(0, 1);
+      lcd.print("SIRAM DIHENTIKAN!");
+      return;
+    } else {
+      rainStopDisplayActive = false;
+    }
   }
 
   // 3. Logika untuk memulai siklus PAGI
