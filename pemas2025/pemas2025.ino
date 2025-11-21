@@ -60,19 +60,58 @@ unsigned long infoDisplayStartTime = 0;
 bool showInfoDisplay = false;
 int infoDisplayType = 0; // 1=durasi, 2=credits, 3=saved
 
+// Variabel untuk setting waktu manual
+unsigned long upButtonPressTime = 0;
+bool upButtonPressed = false;
+bool manualTimeMode = false;
+int manualHour = 0;
+int manualMinute = 0;
+bool editingHour = true;
+
+// Variabel untuk tracking hujan dalam 2 jam terakhir
+unsigned long lastHeavyRainTime = 0;
+const unsigned long RAIN_SKIP_DURATION = 2UL * 60UL * 60UL * 1000UL; // 2 jam dalam milidetik
+
 int readButton() {
   int adc_key_in = analogRead(0);
+  unsigned long now = millis();
+  
   if (adc_key_in < 50)   return btnRIGHT;
-  if (adc_key_in < 195)  return btnUP;
-  if (adc_key_in < 380)  return btnDOWN;
-  if (adc_key_in < 555)  return btnLEFT;
+  if (adc_key_in < 195) {
+    // Deteksi tombol UP untuk setting waktu manual
+    if (!upButtonPressed) {
+      upButtonPressed = true;
+      upButtonPressTime = now;
+    } else if (now - upButtonPressTime >= 5000 && currentMenu == 0) {
+      // Masuk ke mode setting waktu manual setelah 5 detik
+      DateTime currentTime = rtc.now();
+      manualHour = currentTime.hour();
+      manualMinute = currentTime.minute();
+      manualTimeMode = true;
+      editingHour = true;
+      upButtonPressed = false;
+      return -2; // Kode khusus untuk masuk manual time mode
+    }
+    return btnUP;
+  }
+  if (adc_key_in < 380) {
+    upButtonPressed = false;
+    return btnDOWN;
+  }
+  if (adc_key_in < 555) {
+    upButtonPressed = false;
+    return btnLEFT;
+  }
   if (adc_key_in < 790) {
-    unsigned long now = millis();
+    upButtonPressed = false;
     if (now - lastButtonPressTime > debounceDelay) {
       lastButtonPressTime = now;
       return btnSELECT;
     }
   }
+  
+  // Reset upButtonPressed jika tidak ada tombol yang ditekan
+  upButtonPressed = false;
   return -1; // Tidak ada tombol yang ditekan
 }
 
@@ -148,6 +187,38 @@ void setup() {
 void displayMenu() {
   lcd.clear();
   DateTime now = rtc.now();
+
+  // Mode setting waktu manual
+  if (manualTimeMode) {
+    lcd.setCursor(0, 0);
+    lcd.print("SETTING WAKTU:");
+    lcd.setCursor(0, 1);
+    
+    if (editingHour) {
+      lcd.print("JAM: [");
+      if (manualHour < 10) lcd.print("0");
+      lcd.print(manualHour);
+      lcd.print("]");
+    } else {
+      lcd.print("JAM: ");
+      if (manualHour < 10) lcd.print("0");
+      lcd.print(manualHour);
+    }
+    
+    lcd.print(" ");
+    
+    if (!editingHour) {
+      lcd.print("MEN:[");
+      if (manualMinute < 10) lcd.print("0");
+      lcd.print(manualMinute);
+      lcd.print("]");
+    } else {
+      lcd.print("MEN:");
+      if (manualMinute < 10) lcd.print("0");
+      lcd.print(manualMinute);
+    }
+    return;
+  }
 
   if (showTempDisplay) {
     lcd.setCursor(1, 0);
@@ -240,11 +311,54 @@ void displayMenu() {
 }
 
 void handleMenuNavigation(int button) {
+  // Mode setting waktu manual
+  if (manualTimeMode) {
+    if (button == btnUP) {
+      if (editingHour) {
+        manualHour = (manualHour + 1) % 24;
+      } else {
+        manualMinute = (manualMinute + 1) % 60;
+      }
+    }
+    if (button == btnDOWN) {
+      if (editingHour) {
+        manualHour = (manualHour + 23) % 24;
+      } else {
+        manualMinute = (manualMinute + 59) % 60;
+      }
+    }
+    if (button == btnRIGHT || button == btnLEFT) {
+      editingHour = !editingHour; // Toggle antara jam dan menit
+    }
+    if (button == btnSELECT) {
+      // Simpan waktu ke RTC
+      DateTime now = rtc.now();
+      rtc.adjust(DateTime(now.year(), now.month(), now.day(), manualHour, manualMinute, 0));
+      
+      // Tampilkan konfirmasi
+      lcd.clear();
+      lcd.setCursor(2, 0);
+      lcd.print("WAKTU DISET!");
+      lcd.setCursor(1, 1);
+      lcd.print("JAM ");
+      if (manualHour < 10) lcd.print("0");
+      lcd.print(manualHour);
+      lcd.print(":");
+      if (manualMinute < 10) lcd.print("0");
+      lcd.print(manualMinute);
+      delay(2000);
+      
+      manualTimeMode = false;
+      currentMenu = 0;
+    }
+    return;
+  }
+
   if (currentMenu == 0) {
     if (button == btnSELECT) {
       currentMenu = (currentMenu + 1) % 5;
     }
-    if (button == btnUP) {
+    if (button == btnUP && !manualTimeMode) {
       showTempDisplay = true;
       tempDisplayStartTime = millis();
     }
@@ -299,7 +413,7 @@ void handleMenuNavigation(int button) {
 }
 
 void handleRelayLogic() {
-  if (currentMenu != 0) return; // Hanya jalankan logika jika di menu utama
+  if (currentMenu != 0 || manualTimeMode) return; // Hanya jalankan logika jika di menu utama dan tidak dalam mode setting waktu
 
   DateTime now = rtc.now();
 
@@ -307,6 +421,8 @@ void handleRelayLogic() {
   if (now.hour() == 0 && now.minute() == 0) {
     morningCycleCompleted = false;
     eveningCycleCompleted = false;
+    // Reset timer hujan juga setiap tengah malam
+    lastHeavyRainTime = 0;
   }
 
   // 2. Hentikan siklus yang sedang berjalan jika tiba-tiba hujan deras
@@ -346,6 +462,14 @@ void handleRelayLogic() {
       morningCycleCompleted = true; // Batalkan hanya siklus pagi
       delay(5000);
       return;
+    } else if (hasRecentHeavyRain()) {
+      lcd.clear();
+      lcd.print("HUJAN 2 JAM LALU,");
+      lcd.setCursor(0, 1);
+      lcd.print("SIRAM DILEWATI");
+      morningCycleCompleted = true; // Skip siklus pagi
+      delay(5000);
+      return;
     } else {
       isRelayActive = true;
       isMorningCycle = true; // Set penanda bahwa ini siklus pagi
@@ -364,6 +488,14 @@ void handleRelayLogic() {
       lcd.setCursor(0, 1);
       lcd.print("SIRAM DIBATALKAN");
       eveningCycleCompleted = true; // Batalkan hanya siklus sore
+      delay(5000);
+      return;
+    } else if (hasRecentHeavyRain()) {
+      lcd.clear();
+      lcd.print("HUJAN 2 JAM LALU,");
+      lcd.setCursor(0, 1);
+      lcd.print("SORE DILEWATI");
+      eveningCycleCompleted = true; // Skip siklus sore
       delay(5000);
       return;
     } else {
@@ -414,7 +546,19 @@ void handleRelayLogic() {
 // Fungsi cek hujan deras berdasarkan nilai analog
 bool isHeavyRain() {
   int rainValue = analogRead(rainSensorPin);
-  return rainValue < HEAVY_RAIN_THRESHOLD; // True jika nilai di bawah ambang batas
+  bool heavyRain = rainValue < HEAVY_RAIN_THRESHOLD; // True jika nilai di bawah ambang batas
+  
+  // Update waktu terakhir hujan deras
+  if (heavyRain) {
+    lastHeavyRainTime = millis();
+  }
+  
+  return heavyRain;
+}
+
+// Fungsi untuk mengecek apakah ada hujan dalam 2 jam terakhir
+bool hasRecentHeavyRain() {
+  return (millis() - lastHeavyRainTime) < RAIN_SKIP_DURATION;
 }
 
 // Fungsi untuk menonaktifkan semua relay
@@ -452,8 +596,20 @@ void loop() {
   //Serial.println(rainValue);
 
   int button = readButton();
+  
+  // Handle masuk ke manual time mode
+  if (button == -2) {
+    // Sudah ditangani di readButton(), tidak perlu aksi tambahan
+    button = -1; // Reset button untuk mencegah aksi lain
+  }
+  
   handleMenuNavigation(button);
-  handleRelayLogic();
+  
+  // Hanya jalankan relay logic jika tidak dalam manual time mode
+  if (!manualTimeMode) {
+    handleRelayLogic();
+  }
+  
   displayMenu();
   delay(200);
 }
