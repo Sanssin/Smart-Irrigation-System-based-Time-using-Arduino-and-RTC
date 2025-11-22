@@ -9,7 +9,7 @@ LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
 // Pin relay (4 relay)
 const int relayPinsOpen[4] = {0, 2, 11, 13};  // Relay untuk membuka valve
-const int relayPinsClose[4] = {1, 3, 12, 10}; // Relay untuk menutup valve
+const int relayPinsClose[4] = {1, 3, 12, A3}; // Relay untuk menutup valve
 
 // Pin Sensor Hujan
 const int rainSensorPin = A1; // Sensor hujan tunggal
@@ -27,7 +27,7 @@ const int relayOpenDelays[4] = {25000, 30000, 30000, 30000}; // Contoh delay per
 // Variabel global
 int currentMenu = 0;
 int relayTime = 1;  // Default 1 menit untuk relay buka
-int startRelay = 1; // Relay pembuka pertama
+int startRelay = 0; // Relay pembuka pertama (default Pipa 1)
 int startHourMorning = 6;  // Jam mulai pagi
 int startMinuteMorning = 0; // Menit mulai pagi
 int startHourEvening = 16;  // Jam mulai sore
@@ -70,9 +70,12 @@ int manualHour = 0;
 int manualMinute = 0;
 bool editingHour = true;
 
-// Variabel untuk tracking hujan dalam 2 jam terakhir
-unsigned long lastHeavyRainTime = 0;
-const unsigned long RAIN_SKIP_DURATION = 2UL * 60UL * 60UL * 1000UL; // 2 jam dalam milidetik
+// Variabel untuk reset manual memori hujan
+unsigned long downButtonPressTime = 0;
+bool downButtonPressed = false;
+
+// Variabel untuk tracking hujan - gunakan flag sederhana
+bool rainSkipActive = false; // Flag untuk skip penyiraman karena hujan
 
 // Variabel untuk debugging dan mencegah spam
 unsigned long lastSerialPrint = 0;
@@ -102,22 +105,39 @@ int readButton() {
   }
   if (adc_key_in < 380) {
     upButtonPressed = false;
+    // Deteksi tombol DOWN untuk reset memori hujan
+    if (currentMenu == 0 && rainSkipActive) {
+      if (!downButtonPressed) {
+        downButtonPressed = true;
+        downButtonPressTime = now;
+      } else if (now - downButtonPressTime >= 3000) {
+        // Reset memori hujan setelah 3 detik di menu utama
+        rainSkipActive = false;
+        downButtonPressed = false;
+        return -3; // Kode khusus untuk reset memori hujan
+      }
+    } else {
+      downButtonPressed = false;
+    }
     return btnDOWN;
   }
   if (adc_key_in < 555) {
     upButtonPressed = false;
+    downButtonPressed = false;
     return btnLEFT;
   }
   if (adc_key_in < 790) {
     upButtonPressed = false;
+    downButtonPressed = false;
     if (now - lastButtonPressTime > debounceDelay) {
       lastButtonPressTime = now;
       return btnSELECT;
     }
   }
   
-  // Reset upButtonPressed jika tidak ada tombol yang ditekan
+  // Reset upButtonPressed dan downButtonPressed jika tidak ada tombol yang ditekan
   upButtonPressed = false;
+  downButtonPressed = false;
   return -1; // Tidak ada tombol yang ditekan
 }
 
@@ -178,7 +198,7 @@ void setup() {
   // 3. Inisialisasi pin sensor hujan dan relay
   pinMode(rainSensorPin, INPUT); 
 
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 4; i++) {
     pinMode(relayPinsOpen[i], OUTPUT);
     pinMode(relayPinsClose[i], OUTPUT);
     digitalWrite(relayPinsOpen[i], HIGH); 
@@ -303,7 +323,7 @@ void displayMenu() {
         lcd.print("** HUJAN DERAS **");
       } else if (isLightRain()) {
         lcd.print("- HUJAN RINGAN -");
-      } else if (hasRecentHeavyRain()) {
+      } else if (rainSkipActive) {
         lcd.print("HUJAN 2JAM LALU");
       } else if (currentRelayIndex == -1) {
         lcd.print("PIPA TIDAK AKTIF");
@@ -451,12 +471,12 @@ void handleMenuNavigation(int button) {
       if (currentMenu == 4) startHourEvening = (startHourEvening + 23) % 24;
     }
     if (button == btnLEFT) {
-      if (currentMenu == 2) startRelay = (startRelay + 3) % 3; // 4 relay
+      if (currentMenu == 2) startRelay = (startRelay + 3) % 4; // 4 relay (0-3)
       if (currentMenu == 3) startMinuteMorning = (startMinuteMorning + 59) % 60;
       if (currentMenu == 4) startMinuteEvening = (startMinuteEvening + 59) % 60;
     }
     if (button == btnRIGHT) {
-      if (currentMenu == 2) startRelay = (startRelay + 1) % 3; // 4 relay
+      if (currentMenu == 2) startRelay = (startRelay + 1) % 4; // 4 relay (0-3)
       if (currentMenu == 3) startMinuteMorning = (startMinuteMorning + 1) % 60;
       if (currentMenu == 4) startMinuteEvening = (startMinuteEvening + 1) % 60;
     }
@@ -486,8 +506,7 @@ void handleRelayLogic() {
   if (now.hour() == 0 && now.minute() == 0) {
     morningCycleCompleted = false;
     eveningCycleCompleted = false;
-    // Reset timer hujan juga setiap tengah malam
-    lastHeavyRainTime = 0;
+    rainSkipActive = false; // Reset flag hujan setiap tengah malam
   }
 
   // 2. Hentikan siklus yang sedang berjalan jika tiba-tiba hujan deras
@@ -501,6 +520,7 @@ void handleRelayLogic() {
     } else {
       eveningCycleCompleted = true;
     }
+    rainSkipActive = true; // Set flag skip karena hujan
     rainStopDisplayActive = true;
     rainStopDisplayTime = millis();
   }
@@ -525,9 +545,10 @@ void handleRelayLogic() {
       lcd.setCursor(0, 1);
       lcd.print("SIRAM DIBATALKAN");
       morningCycleCompleted = true; // Batalkan hanya siklus pagi
+      rainSkipActive = true; // Set flag skip karena hujan
       delay(5000);
       return;
-    } else if (hasRecentHeavyRain()) {
+    } else if (rainSkipActive) {
       lcd.clear();
       lcd.print("HUJAN 2 JAM LALU,");
       lcd.setCursor(0, 1);
@@ -553,9 +574,10 @@ void handleRelayLogic() {
       lcd.setCursor(0, 1);
       lcd.print("SIRAM DIBATALKAN");
       eveningCycleCompleted = true; // Batalkan hanya siklus sore
+      rainSkipActive = true; // Set flag skip karena hujan
       delay(5000);
       return;
-    } else if (hasRecentHeavyRain()) {
+    } else if (rainSkipActive) {
       lcd.clear();
       lcd.print("HUJAN 2 JAM LALU,");
       lcd.setCursor(0, 1);
@@ -611,14 +633,7 @@ void handleRelayLogic() {
 // Fungsi cek hujan deras berdasarkan nilai analog
 bool isHeavyRain() {
   int rainValue = analogRead(rainSensorPin);
-  bool heavyRain = rainValue < HEAVY_RAIN_THRESHOLD; // True jika nilai di bawah ambang batas hujan deras
-  
-  // Update waktu terakhir hujan deras
-  if (heavyRain) {
-    lastHeavyRainTime = millis();
-  }
-  
-  return heavyRain;
+  return rainValue < HEAVY_RAIN_THRESHOLD; // True jika nilai di bawah ambang batas hujan deras
 }
 
 // Fungsi cek hujan ringan
@@ -627,10 +642,7 @@ bool isLightRain() {
   return rainValue < LIGHT_RAIN_THRESHOLD && rainValue >= HEAVY_RAIN_THRESHOLD;
 }
 
-// Fungsi untuk mengecek apakah ada hujan dalam 2 jam terakhir
-bool hasRecentHeavyRain() {
-  return (millis() - lastHeavyRainTime) < RAIN_SKIP_DURATION;
-}
+
 
 // Fungsi untuk menonaktifkan semua relay
 void deactivateAllRelays() {
@@ -685,6 +697,22 @@ void loop() {
   // Handle masuk ke manual time mode
   if (button == -2) {
     // Sudah ditangani di readButton(), tidak perlu aksi tambahan
+    button = -1; // Reset button untuk mencegah aksi lain
+  }
+  
+  // Handle reset memori hujan
+  if (button == -3) {
+    // Reset flag hujan dan siklus
+    rainSkipActive = false;
+    morningCycleCompleted = false;
+    eveningCycleCompleted = false;
+    
+    lcd.clear();
+    lcd.setCursor(1, 0);
+    lcd.print("MEMORI HUJAN");
+    lcd.setCursor(2, 1);
+    lcd.print("DI-RESET!");
+    delay(2000);
     button = -1; // Reset button untuk mencegah aksi lain
   }
   
